@@ -1,6 +1,5 @@
 #include "isaserver.h"
 
-
 int main(int argc, char *argv[]) {
     int opt;
     char *port = nullptr;
@@ -37,7 +36,7 @@ bool isMatch(std::string str, std::regex reg) {
     while (currentMatch != lastMatch) {
         ok++;
         std::smatch match = *currentMatch;
-        std::cout << match.str() << "\n";
+        //std::cout << match.str() << "\n";
         currentMatch++;
     }
     return ok > 0;
@@ -53,168 +52,90 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
         printf("%s\n", buff);
         if (strncmp("GET", buff, 3) == 0) {
             code = getInfo(allBoards, connfd, buff);
-            if (code == 404) {
-                time_t now = time(0);
-                char *dt = ctime(&now);
-                if (dt[strlen(dt)-1] == '\n') { dt[strlen(dt)-1] = '\0'; }
-                char request[LISTENQ] = {0};
-                bzero(request, sizeof(request));
-                sprintf(request, "HTTP/1.1 %d Not Found\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n",
-                        code, dt);
+            if (code == NOTFOUND) {
+                std::string preparedRequest = prepareRespond(code);
+                char request[preparedRequest.size() + 1];
+                strcpy(request, preparedRequest.c_str());
                 int sendbytes = write(connfd, request, sizeof(request));
-                if (sendbytes == -1) {
+                if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
                     err(1, "write() failed.");
-                } else if (sendbytes != sizeof(request)) {
-                    err(1, "write(): buffer written partially");
                 }
             }
             return code;
         } else if (strncmp("POST", buff, 4) == 0) {
             int typeOfPost = post(buff, newBoard, allBoards);
 
-            if (typeOfPost == 409) {
+            if (typeOfPost == CONFLICT) {
                 code = 409;
-                time_t now = time(0);
-                char *dt = ctime(&now);
-                if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
-                char request[LISTENQ] = {0};
-                bzero(request, sizeof(request));
-                sprintf(request, "HTTP/1.1 %d Conflict\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n",
-                        code, dt);
-                int sendbytes = write(connfd, request, sizeof(request));
-                if (sendbytes == -1) {
-                    err(1, "write() failed.");
-                } else if (sendbytes != sizeof(request)) {
-                    err(1, "write(): buffer written partially");
-                }
             }
             if (typeOfPost == NEWBOARD) {
                 code = 201;
-                time_t now = time(0);
-                char *dt = ctime(&now);
-                if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
-                char request[LISTENQ] = {0};
-                bzero(request, sizeof(request));
-                sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
-                int sendbytes = write(connfd, request, sizeof(request));
-                if (sendbytes == -1) {
-                    err(1, "write() failed.");
-                } else if (sendbytes != sizeof(request)) {
-                    err(1, "write(): buffer written partially");
-                }
             }
             if (typeOfPost == UPGRADEBOARD) {
                 code = upgradeBoardContent(buff, allBoards);
-                if (code == 404) {
-                    time_t now = time(0);
-                    char *dt = ctime(&now);
-                    if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
-                    char request[LISTENQ] = {0};
-                    bzero(request, sizeof(request));
-                    sprintf(request, "HTTP/1.1 %d Not Found\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n",
-                            code, dt);
-                    int sendbytes = write(connfd, request, sizeof(request));
-                    if (sendbytes == -1) {
-                        err(1, "write() failed.");
-                    } else if (sendbytes != sizeof(request)) {
-                        err(1, "write(): buffer written partially");
-                    }
-                }
-                if (code == 201) {
-                    time_t now = time(0);
-                    char *dt = ctime(&now);
-                    if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
-                    char request[LISTENQ] = {0};
-                    bzero(request, sizeof(request));
-                    sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
-                    int sendbytes = write(connfd, request, sizeof(request));
-                    if (sendbytes == -1) {
-                        err(1, "write() failed.");
-                    } else if (sendbytes != sizeof(request)) {
-                        err(1, "write(): buffer written partially");
-                    }
-                }
+            }
+            std::string preparedRequest = prepareRespond(code);
+            char request[preparedRequest.size() + 1];
+            strcpy(request, preparedRequest.c_str());
+            int sendbytes = write(connfd, request, sizeof(request));
+            if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
+                err(1, "write() failed.");
+            }
+            if (typeOfPost == UPGRADEBOARD) {
                 code = UPGRADEBOARD;
             }
         } else if (strncmp("DELETE", buff, 6) == 0) {
             code = deleteBoard(buff, allBoards);
-            if (code == 404) {
-                time_t now = time(0);
-                char *dt = ctime(&now);
-                if (dt[strlen(dt)-1] == '\n') { dt[strlen(dt)-1] = '\0'; }
-                char request[LISTENQ] = {0};
-                bzero(request, sizeof(request));
-                sprintf(request, "HTTP/1.1 %d Not Found\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n",
-                        code, dt);
-                int sendbytes = write(connfd, request, sizeof(request));
-                if (sendbytes == -1) {
-                    err(1, "write() failed.");
-                } else if (sendbytes != sizeof(request)) {
-                    err(1, "write(): buffer written partially");
-                }
-            }
-            if (code == 200) {
-                time_t now = time(0);
-                char *dt = ctime(&now);
-                if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
-                char request[LISTENQ] = {0};
-                bzero(request, sizeof(request));
-                sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
-                int sendbytes = write(connfd, request, sizeof(request));
-                if (sendbytes == -1) {
-                    err(1, "write() failed.");
-                } else if (sendbytes != sizeof(request)) {
-                    err(1, "write(): buffer written partially");
-                }
+            std::string preparedRequest = prepareRespond(code);
+            char request[preparedRequest.size() + 1];
+            strcpy(request, preparedRequest.c_str());
+            int sendbytes = write(connfd, request, sizeof(request));
+            if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
+                err(1, "write() failed.");
             }
         } else if (strncmp("PUT", buff, 3) == 0) {
             code = updateSpecificPost(buff, allBoards);
-            if (code == 201) {
-                time_t now = time(0);
-                char *dt = ctime(&now);
-                if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
-                char request[LISTENQ] = {0};
-                bzero(request, sizeof(request));
-                sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
-                int sendbytes = write(connfd, request, sizeof(request));
-                if (sendbytes == -1) {
-                    err(1, "write() failed.");
-                } else if (sendbytes != sizeof(request)) {
-                    err(1, "write(): buffer written partially");
-                }
-            }
-            if (code == 404) {
-                time_t now = time(0);
-                char *dt = ctime(&now);
-                if (dt[strlen(dt)-1] == '\n') { dt[strlen(dt)-1] = '\0'; }
-                char request[LISTENQ] = {0};
-                bzero(request, sizeof(request));
-                sprintf(request, "HTTP/1.1 %d Not Found\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n",
-                        code, dt);
-                int sendbytes = write(connfd, request, sizeof(request));
-                if (sendbytes == -1) {
-                    err(1, "write() failed.");
-                } else if (sendbytes != sizeof(request)) {
-                    err(1, "write(): buffer written partially");
-                }
+            std::string preparedRequest = prepareRespond(code);
+            char request[preparedRequest.size() + 1];
+            strcpy(request, preparedRequest.c_str());
+            int sendbytes = write(connfd, request, sizeof(request));
+            if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
+                err(1, "write() failed.");
             }
         } else {
-            time_t now = time(0);
-            char *dt = ctime(&now);
-            if (dt[strlen(dt)-1] == '\n') { dt[strlen(dt)-1] = '\0'; }
-            char request[LISTENQ] = {0};
-            bzero(request, sizeof(request));
-            sprintf(request, "HTTP/1.1 %d Not Found\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n",
-                    code, dt);
+            code = NOTFOUND;
+            std::string preparedRequest = prepareRespond(code);
+            char request[preparedRequest.size() + 1];
+            strcpy(request, preparedRequest.c_str());
             int sendbytes = write(connfd, request, sizeof(request));
-            if (sendbytes == -1) {
+            if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
                 err(1, "write() failed.");
-            } else if (sendbytes != sizeof(request)) {
-                err(1, "write(): buffer written partially");
             }
         }
     }
     return code;
+}
+
+std::string prepareRespond(int code) {
+    time_t now = time(0);
+    char *dt = ctime(&now);
+    if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
+    char request[LISTENQ] = {0};
+    bzero(request, sizeof(request));
+    if (code == CONFLICT) {
+        sprintf(request, "HTTP/1.1 %d Conflict\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+    }
+    if (code == NOTFOUND) {
+        sprintf(request, "HTTP/1.1 %d Not Found\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+    }
+    if (code == 201) {
+        sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+    }
+    if (code == 200) {
+        sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+    }
+    std::string strRequest(request);
+    return request;
 }
 
 int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
@@ -263,7 +184,7 @@ int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
         if (putCommandParts.at(position + 2) == i.boardStructName) {
             if (id <= i.posts.size() && id >= 0) {
                 findAndReplaceAll(i.posts.at(id - 1), i.posts.at(id - 1), content + "\n");
-                return 201;
+                return 200;
             }
         }
     }

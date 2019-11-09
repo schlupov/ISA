@@ -82,7 +82,7 @@ char *convertCommandtoHttpRequest(char *command, char *fullHttpCommand) {
                 } else if (front == "item") {
                     state = item;
                 } else {
-                    fprintf(stderr, "Wrong argument: %s", front.c_str());
+                    fprintf(stderr, "Wrong argument: %s\n", front.c_str());
                     exit(EXIT_FAILURE);
                 }
                 break;
@@ -94,7 +94,7 @@ char *convertCommandtoHttpRequest(char *command, char *fullHttpCommand) {
                 } else if (front == "update") {
                     state = update;
                 } else {
-                    fprintf(stderr, "Wrong argument: %s", front.c_str());
+                    fprintf(stderr, "Wrong argument: %s\n", front.c_str());
                     exit(EXIT_FAILURE);
                 }
                 break;
@@ -106,7 +106,7 @@ char *convertCommandtoHttpRequest(char *command, char *fullHttpCommand) {
                 } else if (front == "list") {
                     state = list;
                 } else {
-                    fprintf(stderr, "Wrong argument 2: %s", front.c_str());
+                    fprintf(stderr, "Wrong argument 2: %s\n", front.c_str());
                     exit(EXIT_FAILURE);
                 }
                 break;
@@ -207,22 +207,22 @@ int main(int argc, char *argv[]) {
     }
 
     if (((strcmp(argv[argc - 4], "add") == 0) || (strcmp(argv[argc - 4], "delete") == 0)) && tmpArgumentsCounter != 4) {
-        fprintf(stderr, "Wrong number of arguments");
+        fprintf(stderr, "Wrong number of arguments for command add or delete\n");
         exit(EXIT_FAILURE);
     }
 
     if ((strcmp(argv[argc - 4], "update") == 0) && tmpArgumentsCounter != 5) {
-        fprintf(stderr, "Wrong number of arguments");
+        fprintf(stderr, "Wrong number of arguments for command update\n");
         exit(EXIT_FAILURE);
     }
 
     if ((strcmp(argv[argc - 4], "board") == 0) && tmpArgumentsCounter != 3) {
-        fprintf(stderr, "Wrong number of arguments");
+        fprintf(stderr, "Wrong number of arguments with board\n");
         exit(EXIT_FAILURE);
     }
 
     if ((strcmp(argv[argc - 4], "boards") == 0) && tmpArgumentsCounter != 1) {
-        fprintf(stderr, "Wrong number of arguments");
+        fprintf(stderr, "Wrong number of arguments with boards\n");
         exit(EXIT_FAILURE);
     }
 

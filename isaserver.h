@@ -29,6 +29,8 @@
 #define SA struct sockaddr
 #define NEWBOARD 0
 #define UPGRADEBOARD 1
+#define CONFLICT 409
+#define NOTFOUND 404
 #include <utility>
 
 struct Board {
@@ -53,4 +55,6 @@ void findAndReplaceAll(std::string & data, std::string toSearch, std::string rep
 bool isMatch(std::string str, std::regex reg);
 int updateSpecificPost(char *buff, std::list<Board> &allBoards);
 long getPosition(std::vector<std::string> &putCommandParts, const std::string &method);
+std::string prepareRespond404(int code);
+std::string prepareRespond(int code);
 #endif //ISASERVER_ISASERVER_H
