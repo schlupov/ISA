@@ -12,6 +12,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <regex>
 #include <sstream>
 #define SA struct sockaddr
 #define window 1024
@@ -34,4 +35,6 @@ char *convertCommandtoHttpRequest(char *command, char *fullHttpCommand);
 char* createHttpCommand(std::string whichHttpCommand, const std::string& basicString, char *fullHttpCommand);
 void http_method(int sockfd, char *method, const char *port, const char *host, char *string);
 std::string getContent(const std::string &command);
+bool isMatch(std::string str, std::regex reg);
+bool checkCommandLineArguments(const std::string& command);
 #endif

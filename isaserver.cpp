@@ -69,7 +69,7 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
                 code = 409;
             }
             if (typeOfPost == NEWBOARD) {
-                code = 201;
+                code = POST_OK;
             }
             if (typeOfPost == UPGRADEBOARD) {
                 code = upgradeBoardContent(buff, allBoards);
@@ -128,11 +128,14 @@ std::string prepareRespond(int code) {
     if (code == NOTFOUND) {
         sprintf(request, "HTTP/1.1 %d Not Found\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
     }
-    if (code == 201) {
+    if (code == POST_OK) {
+        sprintf(request, "HTTP/1.1 %d Created\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+    }
+    if (code == OK) {
         sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
     }
-    if (code == 200) {
-        sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+    if (code == BADREQUEST) {
+        sprintf(request, "HTTP/1.1 %d Bad Request\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
     }
     std::string strRequest(request);
     return request;
@@ -144,11 +147,11 @@ int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
     std::vector<std::string> putCommandParts = getCommandPartsAsVector(command);
     std::string method = "PUT";
     long position = getPosition(putCommandParts, method);
-    std::regex contentLength("Content-Length: [0-9]+");
+    std::regex contentLength("Content-Length:[ \t]*[0-9]+\r\n");
     std::regex number("[0-9]+");
     std::string numberStr;
     if (!isMatch(command, contentLength)) {
-        return 404;
+        return NOTFOUND;
     }
     else {
         std::sregex_iterator currentMatch(command.begin(), command.end(), contentLength);
@@ -167,16 +170,14 @@ int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
         }
     }
 
-    if (numberStr == "0") { return 400; }
-
-    if (position == 0) { return 404; }
-
-    if (content.empty()) { return 400; }
+    if (numberStr == "0") { return BADREQUEST; }
+    if (position == 0) { return NOTFOUND; }
+    if (content.empty()) { return BADREQUEST; }
 
     std::string name = putCommandParts.at(position + 2);
-    std::regex put(R"(PUT \/board\/)" + name + R"(\/)" + putCommandParts.at(position + 3) + R"( HTTP\/1\.1)");
+    std::regex put(R"(PUT[ \t]+\/board\/)" + name + R"(\/)" + putCommandParts.at(position + 3) + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
     if (!isMatch(command, put)) {
-        return 404;
+        return NOTFOUND;
     }
 
     int id = std::stoi(putCommandParts.at(position + 3));
@@ -184,11 +185,11 @@ int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
         if (putCommandParts.at(position + 2) == i.boardStructName) {
             if (id <= i.posts.size() && id >= 0) {
                 findAndReplaceAll(i.posts.at(id - 1), i.posts.at(id - 1), content + "\n");
-                return 200;
+                return OK;
             }
         }
     }
-    return 404;
+    return NOTFOUND;
 }
 
 long getPosition(std::vector<std::string> &putCommandParts, const std::string &method) {
@@ -205,7 +206,7 @@ long getPosition(std::vector<std::string> &putCommandParts, const std::string &m
 int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
     char request[LISTENQ] = {0};
     int sendbytes;
-    int code = 404;
+    int code = NOTFOUND;
     time_t now = time(0);
     char *dt = ctime(&now);
     if (dt[strlen(dt)-1] == '\n') { dt[strlen(dt)-1] = '\0'; }
@@ -215,25 +216,26 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
     std::string method = "GET";
     long position = getPosition(getCommandParts, method);
 
-    if (position == 0) { return 404; }
+    if (position == 0) { return NOTFOUND; }
 
     if (getCommandParts.at(position + 1) == "boards") {
-        std::regex get1(R"(GET \/boards HTTP\/1\.1)");
+        std::regex get1(R"(GET[ \t]+\/boards[ \t]+HTTP\/1\.1[ \t]*\r\n)");
         if (!isMatch(commands, get1)) {
-            return 404;
+            return NOTFOUND;
         }
 
         std::string content;
         for (auto &i: allBoards) {
             if (!i.boardStructName.empty()) {
-                code = 200;
+                code = OK;
                 content += i.boardStructName + "\n";
             }
         }
-        if (code != 200) { return code; }
+        if (code != OK) { return code; }
 
         findAndReplaceAll(content, "\\n", "\n");
         findAndReplaceAll(content, "\\n", "\n");
+        findAndReplaceAll(content, "\\t", "\t");
         findAndReplaceAll(content, "\n\n", "\n");
 
         char cstr[content.size() + 1];
@@ -250,7 +252,7 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
     }
 
     std::string name = getCommandParts.at(position + 2);
-    std::regex get2(R"(GET \/board\/)" + name + R"( HTTP\/1\.1)");
+    std::regex get2(R"(GET[ \t]+\/board\/)" + name + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
     if (!isMatch(commands, get2)) {
         return code;
     }
@@ -263,9 +265,10 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
             std::string tmp = getContentOfPost(i);
             findAndReplaceAll(tmp, "\\n", "\n");
             findAndReplaceAll(tmp, "\\n", "\n");
+            findAndReplaceAll(tmp, "\\t", "\t");
             findAndReplaceAll(tmp, "\n\n", "\n");
 
-            code = 200;
+            code = OK;
             char contentOfPost[tmp.size() + 1];
             strcpy(contentOfPost, tmp.c_str());
             bzero(request, sizeof(request));
@@ -312,15 +315,15 @@ int deleteBoard(char *buff, std::list<Board> &allBoards) {
     std::string method = "DELETE";
     long position = getPosition(deleteCommandParts, method);
 
-    if (position == 0) { return 404; }
+    if (position == 0) { return NOTFOUND; }
 
     auto it = allBoards.begin();
 
     if (deleteCommandParts.at(position + 1) == "boards") {
         std::string name = deleteCommandParts.at(position + 2);
-        std::regex delete1(R"(DELETE \/boards\/)" + name + R"( HTTP\/1\.1)");
+        std::regex delete1(R"(DELETE[ \t]+\/boards\/)" + name + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
         if (!isMatch(command, delete1)) {
-            return 404;
+            return NOTFOUND;
         }
 
         int pos= 0;
@@ -328,29 +331,29 @@ int deleteBoard(char *buff, std::list<Board> &allBoards) {
             if (deleteCommandParts.at(position + 2) == i.boardStructName) {
                 advance(it, pos);
                 allBoards.erase(it);
-                return 200;
+                return OK;
             }
             pos++;
         }
-        return 404;
+        return NOTFOUND;
     }
 
     int id = std::stoi(deleteCommandParts.at(position + 3));
     std::string name = deleteCommandParts.at(position + 2);
-    std::regex delete2(R"(DELETE \/board\/)" + name + R"(\/)" + deleteCommandParts.at(position + 3) + R"( HTTP\/1\.1)");
+    std::regex delete2(R"(DELETE[ \t]+\/board\/)" + name + R"(\/)" + deleteCommandParts.at(position + 3) + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
     if (!isMatch(command, delete2)) {
-        return 404;
+        return NOTFOUND;
     }
 
     for (auto &i: allBoards) {
         if (deleteCommandParts.at(position + 2) == i.boardStructName) {
             if (id <= i.posts.size() && id >= 0) {
                 i.posts.erase(i.posts.begin() + id - 1);
-                return 200;
+                return OK;
             }
         }
     }
-    return 404;
+    return NOTFOUND;
 }
 
 int upgradeBoardContent(char *buff, std::list<Board> &allBoards) {
@@ -358,23 +361,45 @@ int upgradeBoardContent(char *buff, std::list<Board> &allBoards) {
     std::string content = getContent(command);
     std::vector<std::string> postCommandParts = getCommandPartsAsVector(command);
     std::string method = "POST";
+    std::regex contentLength("Content-Length:[ \t]*[0-9]+\r\n");
+    std::regex number("[0-9]+");
+    std::string numberStr;
+
     long position = getPosition(postCommandParts, method);
 
-    if (position == 0) { return 404; }
+    if (position == 0) { return NOTFOUND; }
 
     std::string name = postCommandParts.at(position + 2);
-    std::regex delete1(R"(POST \/board\/)" + name + R"( HTTP\/1\.1)");
+    std::regex delete1(R"(POST[ \t]+\/board\/)" + name + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
     if (!isMatch(command, delete1)) {
-        return 404;
+        return NOTFOUND;
     }
+
+    std::sregex_iterator currentMatch(command.begin(), command.end(), contentLength);
+    std::sregex_iterator lastMatch;
+
+    while (currentMatch != lastMatch) {
+        std::smatch match = *currentMatch;
+        std::sregex_iterator currentMatchStr(match.str().begin(), match.str().end(), number);
+        std::sregex_iterator lastMatchStr;
+        while (currentMatchStr != lastMatchStr) {
+            std::smatch matchNumber = *currentMatchStr;
+            numberStr = matchNumber.str();
+            break;
+        }
+        break;
+    }
+
+    if (numberStr == "0") { return BADREQUEST; }
+    if (content.empty()) { return BADREQUEST; }
 
     for (auto &i: allBoards) {
         if (postCommandParts.at(position + 2) == i.boardStructName) {
             i.posts.push_back(content);
-            return 201;
+            return POST_OK;
         }
     }
-    return 404;
+    return NOTFOUND;
 }
 
 void tokenize(std::string const &str, const char delimiter, std::vector<std::string> &out) {
@@ -392,21 +417,21 @@ int post(char *buff, Board &newBoard, std::list<Board> &allBoards) {
     std::string method = "POST";
     long position = getPosition(postCommandParts, method);
 
-    if (position == 0) { return 404; }
+    if (position == 0) { return NOTFOUND; }
 
     if (postCommandParts.at(position + 1) == "boards" && isASCII(postCommandParts.at(position + 2))) {
         for (auto &i: allBoards) { if (postCommandParts.at(position + 2) == i.boardStructName) { return 409; }}
         std::string name = postCommandParts.at(position + 2);
-        std::regex delete1(R"(POST \/boards\/)" + name + R"( HTTP\/1\.1)");
+        std::regex delete1(R"(POST[ \t]+\/boards\/)" + name + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
         if (!isMatch(command, delete1)) {
-            return 404;
+            return NOTFOUND;
         }
         newBoard.boardStructName = postCommandParts.at(position + 2);
         return NEWBOARD;
     }
 
     if (postCommandParts.at(position + 1) == "boards" && !isASCII(postCommandParts.at(position + 2))) {
-        return 404;
+        return NOTFOUND;
     }
 
     return UPGRADEBOARD;
@@ -495,7 +520,7 @@ int startServer(int port) {
 
         Board newBoard;
         int code = resolveCommand(connfd, arr, newBoard);
-        if (code == 201) {
+        if (code == POST_OK) {
             arr.push_back(newBoard);
         }
 

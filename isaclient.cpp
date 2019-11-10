@@ -157,6 +157,18 @@ char *createHttpCommand(std::string whichHttpCommand, const std::string &front, 
     return fullHttpCommand;
 }
 
+bool isMatch(std::string str, std::regex reg) {
+    std::sregex_iterator currentMatch(str.begin(), str.end(), reg);
+    std::sregex_iterator lastMatch;
+
+    while (currentMatch != lastMatch) {
+        std::smatch match = *currentMatch;
+        //std::cout << "match" << match.str() << "\n";
+        return str == match.str();
+    }
+    return false;
+}
+
 int main(int argc, char *argv[]) {
     int opt;
     char *port = nullptr;
@@ -206,23 +218,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (((strcmp(argv[argc - 4], "add") == 0) || (strcmp(argv[argc - 4], "delete") == 0)) && tmpArgumentsCounter != 4) {
-        fprintf(stderr, "Wrong number of arguments for command add or delete\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if ((strcmp(argv[argc - 4], "update") == 0) && tmpArgumentsCounter != 5) {
-        fprintf(stderr, "Wrong number of arguments for command update\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if ((strcmp(argv[argc - 4], "board") == 0) && tmpArgumentsCounter != 3) {
-        fprintf(stderr, "Wrong number of arguments with board\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if ((strcmp(argv[argc - 4], "boards") == 0) && tmpArgumentsCounter != 1) {
-        fprintf(stderr, "Wrong number of arguments with boards\n");
+    std::string strCommand(command);
+    bool everythingOk = checkCommandLineArguments(strCommand);
+    if (!everythingOk) {
+        fprintf(stderr, "Wrong number of arguments\n");
         exit(EXIT_FAILURE);
     }
 
@@ -239,6 +238,38 @@ int help() {
     printf("Help\n");
 
     exit(EXIT_SUCCESS);
+}
+
+bool checkCommandLineArguments(const std::string& command) {
+    if (command.find("item update") != std::string::npos) {
+        std::regex update(R"((item update [a-zA-Z0-9]+ [0-9]+ [\x00-\x7F]+))");
+        if (!isMatch(command, update)) { return false; }
+    }
+    else if (command.find("item add") != std::string::npos) {
+        std::regex update(R"((item add [a-zA-Z0-9]+ [\x00-\x7F]+))");
+        if (!isMatch(command, update)) { return false; }
+    }
+    else if (command.find("item delete") != std::string::npos) {
+        std::regex update(R"((item delete [a-zA-Z0-9]+ [0-9]+))");
+        if (!isMatch(command, update)) { return false; }
+    }
+    else if (command.find("board list") != std::string::npos) {
+        std::regex update(R"((board list [a-zA-Z0-9]+))");
+        if (!isMatch(command, update)) { return false; }
+    }
+    else if (command.find("board delete") != std::string::npos) {
+        std::regex update(R"((board delete [a-zA-Z0-9]+))");
+        if (!isMatch(command, update)) { return false; }
+    }
+    else if (command.find("boards") != std::string::npos) {
+        std::regex update(R"((boards))");
+        if (!isMatch(command, update)) { return false; }
+    }
+    else if (command.find("board add") != std::string::npos) {
+        std::regex update(R"((board add [a-zA-Z0-9]+))");
+        if (!isMatch(command, update)) { return false; }
+    }
+    return true;
 }
 
 int connect(char *port, char *host, char *command, char *contentForPost) {

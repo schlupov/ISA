@@ -31,6 +31,9 @@
 #define UPGRADEBOARD 1
 #define CONFLICT 409
 #define NOTFOUND 404
+#define OK 200
+#define POST_OK 201
+#define BADREQUEST 400
 #include <utility>
 
 struct Board {
