@@ -1,6 +1,7 @@
 #include "isaclient.h"
 
-void http_method(int sockfd, char *method, const char *port, const char *host, char *data) {
+
+int http_method(int sockfd, char *method, const char *port, const char *host, char *data, bool verbose) {
     char fromServer[window];
     char request[window] = {0};
     bzero(request, sizeof(request));
@@ -26,9 +27,67 @@ void http_method(int sockfd, char *method, const char *port, const char *host, c
     bzero(fromServer, sizeof(fromServer));
     read(sockfd, fromServer, sizeof(fromServer));
     std::string stringFromServer(fromServer);
-    //std::string contentStringFromServer = getContent(stringFromServer);
-    //std::cout << contentStringFromServer;
-    std::cout << stringFromServer;
+
+    int code = 0;
+    if (verbose) {
+        std::string headersStringFromServer = getHeaders(stringFromServer);
+        code = checkHttpReturnCode(headersStringFromServer);
+        std::cout << stringFromServer;
+    }
+    else {
+        std::string contentStringFromServer = getContent(stringFromServer);
+        std::string headersStringFromServer = getHeaders(stringFromServer);
+        code = checkHttpReturnCode(headersStringFromServer);
+        std::cerr << headersStringFromServer;
+        std::cout << contentStringFromServer;
+    }
+
+    if (code > 201) {
+        return -1;
+    }
+    return 0;
+}
+
+int checkHttpReturnCode(std::string headers) {
+    std::regex code(R"((200|201|400|404|409))");
+    std::string strCode = getCode(headers, code);
+    int intCode = 400;
+    try {
+        intCode = std::stoi(strCode);
+    }
+    catch (std::invalid_argument const &e){
+        return intCode;
+    }
+    catch (std::out_of_range const &e) {
+        return intCode;
+    }
+    return intCode;
+}
+
+std::string getCode(std::string headers, std::regex regex) {
+    std::sregex_iterator currentMatch(headers.begin(), headers.end(), regex);
+    std::sregex_iterator lastMatch;
+
+    while (currentMatch != lastMatch) {
+        std::smatch match = *currentMatch;
+        return match.str();
+    }
+    return " ";
+}
+
+std::string getHeaders(const std::string &command) {
+    std::string headers;
+    int beginOfContent = 0;
+    for (unsigned int i = 0; i < command.length(); i++) {
+        if (command[i] == '\n' && command[i + 1] == '\r') {
+            beginOfContent = i + 3;
+        }
+    }
+
+    for (unsigned int i = 0; i < beginOfContent; i++) {
+        headers += command[i];
+    }
+    return headers;
 }
 
 std::string getContent(const std::string &command) {
@@ -163,7 +222,6 @@ bool isMatch(std::string str, std::regex reg) {
 
     while (currentMatch != lastMatch) {
         std::smatch match = *currentMatch;
-        //std::cout << "match" << match.str() << "\n";
         return str == match.str();
     }
     return false;
@@ -173,14 +231,18 @@ int main(int argc, char *argv[]) {
     int opt;
     char *port = nullptr;
     char *host = nullptr;
+    bool verbose = false;
 
-    while ((opt = getopt(argc, argv, ":p:H:h")) != -1) {
+    while ((opt = getopt(argc, argv, ":p:H:v:h")) != -1) {
         switch (opt) {
             case 'p':
                 port = optarg;
                 break;
             case 'H':
                 host = optarg;
+                break;
+            case 'v':
+                verbose = true;
                 break;
             case 'h':
                 help();
@@ -192,17 +254,23 @@ int main(int argc, char *argv[]) {
     }
 
     if (port == nullptr) {
-        printf("Port number is a required argument!\n");
+        fprintf( stderr, "Port number is the required argument!\n");
         return EXIT_FAILURE;
     }
 
     if (host == nullptr) {
-        printf("Host address is a required argument!\n");
+        printf("Host address is the required argument!\n");
         return EXIT_FAILURE;
     }
 
     unsigned long len = 0;
-    int tmpArgumentsCounter = argc - 5;
+    int tmpArgumentsCounter;
+    if (verbose) {
+        tmpArgumentsCounter = argc - 6;
+    }
+    else {
+        tmpArgumentsCounter = argc - 5;
+    }
     for (int i = tmpArgumentsCounter; i > 0; --i) {
         len = len + strlen(argv[argc - i]);
     }
@@ -221,17 +289,18 @@ int main(int argc, char *argv[]) {
     std::string strCommand(command);
     bool everythingOk = checkCommandLineArguments(strCommand);
     if (!everythingOk) {
-        fprintf(stderr, "Wrong number of arguments\n");
+        fprintf(stderr, "Bad program arguments, use -h\n");
         exit(EXIT_FAILURE);
     }
 
     char *fullHttpCommand = (char *) malloc(len * 2);
     fullHttpCommand = convertCommandtoHttpRequest(command, fullHttpCommand);
-    connect(port, host, fullHttpCommand, contentForPost);
+    int code = connect(port, host, fullHttpCommand, contentForPost, verbose);
     free(command);
     free(fullHttpCommand);
 
-    return EXIT_SUCCESS;
+    if (code == -1) { exit(-1); }
+    exit(0);
 }
 
 int help() {
@@ -241,23 +310,23 @@ int help() {
 }
 
 bool checkCommandLineArguments(const std::string& command) {
-    if (command.find("item update") != std::string::npos) {
+    if (command.find("item") != std::string::npos && command.find("update") != std::string::npos) {
         std::regex update(R"((item update [a-zA-Z0-9]+ [0-9]+ [\x00-\x7F]+))");
         if (!isMatch(command, update)) { return false; }
     }
-    else if (command.find("item add") != std::string::npos) {
+    else if (command.find("item") != std::string::npos && command.find("add") != std::string::npos) {
         std::regex update(R"((item add [a-zA-Z0-9]+ [\x00-\x7F]+))");
         if (!isMatch(command, update)) { return false; }
     }
-    else if (command.find("item delete") != std::string::npos) {
+    else if (command.find("item") != std::string::npos && command.find("delete") != std::string::npos) {
         std::regex update(R"((item delete [a-zA-Z0-9]+ [0-9]+))");
         if (!isMatch(command, update)) { return false; }
     }
-    else if (command.find("board list") != std::string::npos) {
+    else if (command.find("board") != std::string::npos && command.find("list") != std::string::npos) {
         std::regex update(R"((board list [a-zA-Z0-9]+))");
         if (!isMatch(command, update)) { return false; }
     }
-    else if (command.find("board delete") != std::string::npos) {
+    else if (command.find("board") != std::string::npos && command.find("delete") != std::string::npos) {
         std::regex update(R"((board delete [a-zA-Z0-9]+))");
         if (!isMatch(command, update)) { return false; }
     }
@@ -265,14 +334,17 @@ bool checkCommandLineArguments(const std::string& command) {
         std::regex update(R"((boards))");
         if (!isMatch(command, update)) { return false; }
     }
-    else if (command.find("board add") != std::string::npos) {
+    else if (command.find("board") != std::string::npos && command.find("add") != std::string::npos) {
         std::regex update(R"((board add [a-zA-Z0-9]+))");
         if (!isMatch(command, update)) { return false; }
+    }
+    else {
+        return false;
     }
     return true;
 }
 
-int connect(char *port, char *host, char *command, char *contentForPost) {
+int connect(char *port, char *host, char *command, char *contentForPost, bool verbose) {
     int sockfd;
     struct sockaddr_in servaddr{};
 
@@ -280,8 +352,6 @@ int connect(char *port, char *host, char *command, char *contentForPost) {
     if (sockfd == -1) {
         printf("socket creation failed...\n");
         exit(0);
-    } else {
-        //printf("Socket successfully created..\n");
     }
     bzero(&servaddr, sizeof(servaddr));
 
@@ -292,13 +362,11 @@ int connect(char *port, char *host, char *command, char *contentForPost) {
     if (connect(sockfd, (SA *) &servaddr, sizeof(servaddr)) != 0) {
         printf("connection with the server failed...\n");
         exit(0);
-    } else {
-        //printf("connected to the server..\n");
     }
 
-    http_method(sockfd, command, port, host, contentForPost);
+    int code = http_method(sockfd, command, port, host, contentForPost, verbose);
 
     close(sockfd);
 
-    return 0;
+    return code;
 }

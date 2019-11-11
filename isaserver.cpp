@@ -18,9 +18,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    if (argc > 3) {
+        fprintf( stderr, "Too many arguments!\n");
+        exit(-1);
+    }
+
     if (port == nullptr) {
-        printf("Port number is required argument!\n");
-        return EXIT_FAILURE;
+        fprintf( stderr, "Port number is the required argument!\n");
+        exit(-1);
     }
 
     startServer(atoi(port));
@@ -36,7 +41,6 @@ bool isMatch(std::string str, std::regex reg) {
     while (currentMatch != lastMatch) {
         ok++;
         std::smatch match = *currentMatch;
-        //std::cout << match.str() << "\n";
         currentMatch++;
     }
     return ok > 0;
@@ -175,7 +179,8 @@ int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
     if (content.empty()) { return BADREQUEST; }
 
     std::string name = putCommandParts.at(position + 2);
-    std::regex put(R"(PUT[ \t]+\/board\/)" + name + R"(\/)" + putCommandParts.at(position + 3) + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
+    std::regex put(R"(PUT[ \t]+\/board\/)" + name + R"(\/)" + putCommandParts.at(position + 3) +
+                   R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
     if (!isMatch(command, put)) {
         return NOTFOUND;
     }
@@ -242,7 +247,7 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
         strcpy(cstr, content.c_str());
         bzero(request, sizeof(request));
         sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s\n",
-                code, dt, strlen(cstr)-1, cstr);
+                code, dt, strlen(cstr) - 1, cstr);
         sendbytes = write(connfd, request, sizeof(request));
         if (sendbytes == -1) {
             err(1, "write() failed.");
@@ -340,7 +345,8 @@ int deleteBoard(char *buff, std::list<Board> &allBoards) {
 
     int id = std::stoi(deleteCommandParts.at(position + 3));
     std::string name = deleteCommandParts.at(position + 2);
-    std::regex delete2(R"(DELETE[ \t]+\/board\/)" + name + R"(\/)" + deleteCommandParts.at(position + 3) + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
+    std::regex delete2(R"(DELETE[ \t]+\/board\/)" + name + R"(\/)" + deleteCommandParts.at(position + 3) +
+                       R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
     if (!isMatch(command, delete2)) {
         return NOTFOUND;
     }
@@ -484,8 +490,6 @@ int startServer(int port) {
     if (sockfd == -1) {
         printf("socket creation failed...\n");
         exit(0);
-    } else {
-        printf("Socket successfully created..\n");
     }
 
     servaddr.sin_family = AF_INET;
@@ -495,15 +499,13 @@ int startServer(int port) {
     if ((bind(sockfd, (SA *) &servaddr, sizeof(servaddr))) != 0) {
         printf("socket bind failed...\n");
         exit(0);
-    } else {
-        printf("Socket successfully binded..\n");
     }
 
     if ((listen(sockfd, LISTENQ)) != 0) {
         printf("Listen failed...\n");
         exit(0);
     } else {
-        printf("Server listening..\n");
+        printf("ISA server is listening...\n");
     }
 
     std::list<Board> arr;
@@ -514,8 +516,6 @@ int startServer(int port) {
         if (connfd < 0) {
             printf("server accept failed...\n");
             exit(0);
-        } else {
-            printf("server accept the client...\n");
         }
 
         Board newBoard;
@@ -525,7 +525,6 @@ int startServer(int port) {
         }
 
         close(connfd);
-        printf("* Closing newsock\n");
     }
 
     close(sockfd); // close an original server socket
