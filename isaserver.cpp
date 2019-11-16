@@ -19,13 +19,13 @@ int main(int argc, char *argv[]) {
     }
 
     if (argc > 3) {
-        fprintf( stderr, "Too many arguments!\n");
-        exit(-1);
+        fprintf(stderr, "Too many arguments!\n");
+        exit(EXIT_FAILURE);
     }
 
     if (port == nullptr) {
-        fprintf( stderr, "Port number is the required argument!\n");
-        exit(-1);
+        fprintf(stderr, "Port number is the required argument!\n");
+        exit(EXIT_FAILURE);
     }
 
     startServer(atoi(port));
@@ -46,22 +46,41 @@ bool isMatch(std::string str, std::regex reg) {
     return ok > 0;
 }
 
+bool isContentLengthOk(const std::string &buffer) {
+    std::regex regex("Content-Length:[ \t]*[0-9]+\r\n");
+    std::regex number("[0-9]+");
+    std::smatch m2;
+    std::smatch m;
+    std::string content_length;
+
+    regex_search(buffer, m, regex);
+    for (auto x : m) {
+        std::string found = x;
+        regex_search(found, m2, number);
+        for (auto y : m2) { content_length = y; }
+        break;
+    }
+
+    std::string content = getContent(buffer);
+    return content.size() == std::stoi(content_length) + 1;
+}
+
 int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
-    char buff[LISTENQ];
-    char returncode[MAX];
+    char buff[MAXSIZEOFREQUEST];
     int msg_size;
+    int sendbytes;
     int code = 100;
 
-    while ((msg_size = read(connfd, buff, sizeof(buff))) > 0) {
-        printf("%s\n", buff);
+    while ((msg_size = read(connfd, buff, MAXSIZEOFREQUEST)) > 0) {
+        std::string buffer(buff);
         if (strncmp("GET", buff, 3) == 0) {
             code = getInfo(allBoards, connfd, buff);
             if (code == NOTFOUND) {
                 std::string preparedRequest = prepareRespond(code);
                 char request[preparedRequest.size() + 1];
                 strcpy(request, preparedRequest.c_str());
-                int sendbytes = write(connfd, request, sizeof(request));
-                if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
+                sendbytes = write(connfd, request, sizeof(request));
+                if (sendbytes == -1) {
                     err(1, "write() failed.");
                 }
             }
@@ -78,13 +97,13 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
             if (typeOfPost == UPGRADEBOARD) {
                 code = upgradeBoardContent(buff, allBoards);
             }
+            if (!isContentLengthOk(buffer)) {
+                code = BADREQUEST;
+            }
             std::string preparedRequest = prepareRespond(code);
             char request[preparedRequest.size() + 1];
             strcpy(request, preparedRequest.c_str());
-            int sendbytes = write(connfd, request, sizeof(request));
-            if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
-                err(1, "write() failed.");
-            }
+            sendbytes = write(connfd, request, sizeof(request));
             if (typeOfPost == UPGRADEBOARD) {
                 code = UPGRADEBOARD;
             }
@@ -93,28 +112,25 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
             std::string preparedRequest = prepareRespond(code);
             char request[preparedRequest.size() + 1];
             strcpy(request, preparedRequest.c_str());
-            int sendbytes = write(connfd, request, sizeof(request));
-            if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
-                err(1, "write() failed.");
-            }
+            sendbytes = write(connfd, request, sizeof(request));
         } else if (strncmp("PUT", buff, 3) == 0) {
             code = updateSpecificPost(buff, allBoards);
+            if (!isContentLengthOk(buffer)) {
+                code = BADREQUEST;
+            }
             std::string preparedRequest = prepareRespond(code);
             char request[preparedRequest.size() + 1];
             strcpy(request, preparedRequest.c_str());
-            int sendbytes = write(connfd, request, sizeof(request));
-            if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
-                err(1, "write() failed.");
-            }
+            sendbytes = write(connfd, request, sizeof(request));
         } else {
             code = NOTFOUND;
             std::string preparedRequest = prepareRespond(code);
             char request[preparedRequest.size() + 1];
             strcpy(request, preparedRequest.c_str());
-            int sendbytes = write(connfd, request, sizeof(request));
-            if ((sendbytes == -1) || (sendbytes != sizeof(request))) {
-                err(1, "write() failed.");
-            }
+            sendbytes = write(connfd, request, sizeof(request));
+        }
+        if (sendbytes == -1) {
+            err(1, "write() failed.");
         }
     }
     return code;
@@ -124,24 +140,24 @@ std::string prepareRespond(int code) {
     time_t now = time(0);
     char *dt = ctime(&now);
     if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
-    char request[LISTENQ] = {0};
-    bzero(request, sizeof(request));
+    std::ostringstream stringStream;
+
     if (code == CONFLICT) {
-        sprintf(request, "HTTP/1.1 %d Conflict\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+        stringStream << "HTTP/1.1 " << code << " Conflict\r\nDate: " << dt << "\r\n\r\n";
     }
     if (code == NOTFOUND) {
-        sprintf(request, "HTTP/1.1 %d Not Found\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+        stringStream << "HTTP/1.1 " << code << " Not Found\r\nDate: " << dt << "\r\n\r\n";
     }
     if (code == POST_OK) {
-        sprintf(request, "HTTP/1.1 %d Created\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+        stringStream << "HTTP/1.1 " << code << " Created\r\nDate: " << dt << "\r\n\r\n";
     }
     if (code == OK) {
-        sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+        stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << dt << "\r\n\r\n";
     }
     if (code == BADREQUEST) {
-        sprintf(request, "HTTP/1.1 %d Bad Request\r\nDate: %s\r\nContent-Type: text/plain\r\n\r\n", code, dt);
+        stringStream << "HTTP/1.1 " << code << " Bad Request\r\nDate: " << dt << "\r\n\r\n";
     }
-    std::string strRequest(request);
+    std::string request = stringStream.str();
     return request;
 }
 
@@ -153,28 +169,23 @@ int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
     long position = getPosition(putCommandParts, method);
     std::regex contentLength("Content-Length:[ \t]*[0-9]+\r\n");
     std::regex number("[0-9]+");
-    std::string numberStr;
+    std::string content_length;
     if (!isMatch(command, contentLength)) {
         return NOTFOUND;
-    }
-    else {
-        std::sregex_iterator currentMatch(command.begin(), command.end(), contentLength);
-        std::sregex_iterator lastMatch;
+    } else {
+        std::smatch m2;
+        std::smatch m;
 
-        while (currentMatch != lastMatch) {
-            std::smatch match = *currentMatch;
-            std::sregex_iterator currentMatchStr(match.str().begin(), match.str().end(), number);
-            std::sregex_iterator lastMatchStr;
-            while (currentMatchStr != lastMatchStr) {
-                std::smatch matchNumber = *currentMatchStr;
-                numberStr = matchNumber.str();
-                break;
-            }
+        regex_search(command, m, contentLength);
+        for (auto x : m) {
+            std::string found = x;
+            regex_search(found, m2, number);
+            for (auto y : m2) { content_length = y; }
             break;
         }
     }
 
-    if (numberStr == "0") { return BADREQUEST; }
+    if (content_length == "0") { return BADREQUEST; }
     if (position == 0) { return NOTFOUND; }
     if (content.empty()) { return BADREQUEST; }
 
@@ -201,7 +212,7 @@ long getPosition(std::vector<std::string> &putCommandParts, const std::string &m
     long position = 0;
 
     std::vector<std::string>::iterator it;
-    it = std::find (putCommandParts.begin(), putCommandParts.end(), method);
+    it = std::find(putCommandParts.begin(), putCommandParts.end(), method);
     if (it != putCommandParts.end()) {
         position = it - putCommandParts.begin() + 1;
     }
@@ -209,12 +220,11 @@ long getPosition(std::vector<std::string> &putCommandParts, const std::string &m
 }
 
 int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
-    char request[LISTENQ] = {0};
     int sendbytes;
     int code = NOTFOUND;
     time_t now = time(0);
     char *dt = ctime(&now);
-    if (dt[strlen(dt)-1] == '\n') { dt[strlen(dt)-1] = '\0'; }
+    if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
     std::string commands(buff);
     std::string commandContent = getContent(commands);
     std::vector<std::string> getCommandParts = getCommandPartsAsVector(commands);
@@ -243,16 +253,24 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
         findAndReplaceAll(content, "\\t", "\t");
         findAndReplaceAll(content, "\n\n", "\n");
 
-        char cstr[content.size() + 1];
-        strcpy(cstr, content.c_str());
-        bzero(request, sizeof(request));
-        sprintf(request, "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s\n",
-                code, dt, strlen(cstr) - 1, cstr);
-        sendbytes = write(connfd, request, sizeof(request));
+        std::ostringstream stringStream;
+        stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << dt
+                     << "\r\nContent-Type: text/plain\r\nContent-Length: " << content.size() - 1 << "\r\n\r\n"
+                     << content
+                     << "\n";
+        std::string copyOfStr = stringStream.str();
+        if (copyOfStr.size() < MAXSIZEOFREQUEST - 20) {
+            char request[copyOfStr.size() + 1];
+            strcpy(request, copyOfStr.c_str());
+            sendbytes = write(connfd, request, sizeof(request));
+        } else {
+            char request[MAXSIZEOFREQUEST];
+            std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 20) + "\n";
+            strcpy(request, truncated.c_str());
+            sendbytes = write(connfd, request, sizeof(request));
+        }
         if (sendbytes == -1) {
             err(1, "write() failed.");
-        } else if (sendbytes != sizeof(request)) {
-            err(1, "write(): buffer written partially");
         }
     }
 
@@ -264,27 +282,32 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
 
     for (auto &i: allBoards) {
         if (getCommandParts.at(position + 2) == i.boardStructName) {
-            char name[i.boardStructName.size() + 1];
-            strcpy(name, i.boardStructName.c_str());
-
-            std::string tmp = getContentOfPost(i);
-            findAndReplaceAll(tmp, "\\n", "\n");
-            findAndReplaceAll(tmp, "\\n", "\n");
-            findAndReplaceAll(tmp, "\\t", "\t");
-            findAndReplaceAll(tmp, "\n\n", "\n");
+            std::string contentOfPost = getContentOfPost(i);
+            findAndReplaceAll(contentOfPost, "\\n", "\n");
+            findAndReplaceAll(contentOfPost, "\\n", "\n");
+            findAndReplaceAll(contentOfPost, "\\t", "\t");
+            findAndReplaceAll(contentOfPost, "\n\n", "\n");
 
             code = OK;
-            char contentOfPost[tmp.size() + 1];
-            strcpy(contentOfPost, tmp.c_str());
-            bzero(request, sizeof(request));
-            sprintf(request,
-                    "HTTP/1.1 %d OK\r\nDate: %s\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n[%s]\n%s\n",
-                    code, dt, strlen(contentOfPost) + strlen(name)+2, name, contentOfPost);
-            sendbytes = write(connfd, request, sizeof(request));
+            std::ostringstream stringStream;
+            stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << dt
+                         << "\r\nContent-Type: text/plain\r\nContent-Length: "
+                         << contentOfPost.size() + i.boardStructName.size() + 2 << "\r\n\r\n" << "["
+                         << i.boardStructName << "]" << "\n"
+                         << contentOfPost << "\n";
+            std::string copyOfStr = stringStream.str();
+            if (copyOfStr.size() < MAXSIZEOFREQUEST - 20) {
+                char request[copyOfStr.size() + 1];
+                strcpy(request, copyOfStr.c_str());
+                sendbytes = write(connfd, request, sizeof(request));
+            } else {
+                char request[MAXSIZEOFREQUEST];
+                std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 20) + "\n";
+                strcpy(request, truncated.c_str());
+                sendbytes = write(connfd, request, sizeof(request));
+            }
             if (sendbytes == -1) {
                 err(1, "write() failed.");
-            } else if (sendbytes != sizeof(request)) {
-                err(1, "write(): buffer written partially");
             }
             return code;
         }
@@ -331,7 +354,7 @@ int deleteBoard(char *buff, std::list<Board> &allBoards) {
             return NOTFOUND;
         }
 
-        int pos= 0;
+        int pos = 0;
         for (auto &i: allBoards) {
             if (deleteCommandParts.at(position + 2) == i.boardStructName) {
                 advance(it, pos);
@@ -369,7 +392,6 @@ int upgradeBoardContent(char *buff, std::list<Board> &allBoards) {
     std::string method = "POST";
     std::regex contentLength("Content-Length:[ \t]*[0-9]+\r\n");
     std::regex number("[0-9]+");
-    std::string numberStr;
 
     long position = getPosition(postCommandParts, method);
 
@@ -381,22 +403,19 @@ int upgradeBoardContent(char *buff, std::list<Board> &allBoards) {
         return NOTFOUND;
     }
 
-    std::sregex_iterator currentMatch(command.begin(), command.end(), contentLength);
-    std::sregex_iterator lastMatch;
+    std::smatch m2;
+    std::smatch m;
+    std::string content_length;
 
-    while (currentMatch != lastMatch) {
-        std::smatch match = *currentMatch;
-        std::sregex_iterator currentMatchStr(match.str().begin(), match.str().end(), number);
-        std::sregex_iterator lastMatchStr;
-        while (currentMatchStr != lastMatchStr) {
-            std::smatch matchNumber = *currentMatchStr;
-            numberStr = matchNumber.str();
-            break;
-        }
+    regex_search(command, m, contentLength);
+    for (auto x : m) {
+        std::string found = x;
+        regex_search(found, m2, number);
+        for (auto y : m2) { content_length = y; }
         break;
     }
 
-    if (numberStr == "0") { return BADREQUEST; }
+    if (content_length == "0") { return BADREQUEST; }
     if (content.empty()) { return BADREQUEST; }
 
     for (auto &i: allBoards) {
@@ -483,7 +502,7 @@ int startServer(int port) {
     struct sockaddr_in servaddr{}, cli{};
     pid_t pid;
     int msg_size;
-    char buffer[LISTENQ];
+    char buffer[MAXSIZEOFREQUEST];
     long p;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -501,7 +520,7 @@ int startServer(int port) {
         exit(0);
     }
 
-    if ((listen(sockfd, LISTENQ)) != 0) {
+    if ((listen(sockfd, MAXSIZEOFREQUEST)) != 0) {
         printf("Listen failed...\n");
         exit(0);
     } else {

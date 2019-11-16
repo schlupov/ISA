@@ -19,13 +19,8 @@
 #include <iostream>
 #include <sys/types.h>
 #include <sys/ipc.h>
-#include  <sys/types.h>
-#include  <sys/ipc.h>
-#include  <sys/shm.h>
 #include <regex>
-#include  <stdio.h>
-#define LISTENQ 1024
-#define MAX 100
+#define MAXSIZEOFREQUEST 8192
 #define SA struct sockaddr
 #define NEWBOARD 0
 #define UPGRADEBOARD 1
@@ -59,4 +54,5 @@ bool isMatch(std::string str, std::regex reg);
 int updateSpecificPost(char *buff, std::list<Board> &allBoards);
 long getPosition(std::vector<std::string> &putCommandParts, const std::string &method);
 std::string prepareRespond(int code);
+bool isContentLengthOk(const std::string& buffer);
 #endif //ISASERVER_ISASERVER_H

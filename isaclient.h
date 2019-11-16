@@ -14,8 +14,9 @@
 #include <algorithm>
 #include <regex>
 #include <sstream>
+#include <sys/types.h>
 #define SA struct sockaddr
-#define window 1024
+#define window 8192
 
 typedef enum {
     start,
@@ -33,7 +34,7 @@ int help();
 int connect(char *port, char *host, char *command, char *contentForPost, bool verbose);
 char *convertCommandtoHttpRequest(char *command, char *fullHttpCommand);
 char* createHttpCommand(std::string whichHttpCommand, const std::string& basicString, char *fullHttpCommand);
-int http_method(int sockfd, char *method, const char *port, const char *host, char *string, bool verbose);
+int httpMethod(int sockfd, char *method, const char *port, const char *host, char *string, bool verbose);
 std::string getContent(const std::string &command);
 bool isMatch(std::string str, std::regex reg);
 bool checkCommandLineArguments(const std::string& command);

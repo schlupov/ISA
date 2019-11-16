@@ -1,31 +1,51 @@
+#include <err.h>
 #include "isaclient.h"
 
 
-int http_method(int sockfd, char *method, const char *port, const char *host, char *data, bool verbose) {
+int httpMethod(int sockfd, char *method, const char *port, const char *host, char *data, bool verbose) {
     char fromServer[window];
-    char request[window] = {0};
-    bzero(request, sizeof(request));
+    std::ostringstream stringStream;
+    std::string strData(data);
+    std::string request;
+    int sendbytes;
 
     if (strncmp(method, "POST", 4) == 0) {
-        sprintf(request, "%s HTTP/1.1\r\nHost: %s:%s\r\nContent-Type: text/plain\r\nContent-Length: %zu\r\n\r\n%s\n",
-                method, host, port, strlen(data), data);
+        stringStream << method << " HTTP/1.1\r\nHost: " << host << ":" << port
+                     << "\r\nContent-Type: text/plain\r\nContent-Length: " << strlen(data) << "\r\n\r\n" << strData
+                     << "\n";
+        request = stringStream.str();
+        if (request.size() >= window) {
+            printf("Content is too long, please make it shorter.\n");
+            exit(EXIT_FAILURE);
+        }
     }
     if (strncmp(method, "GET", 3) == 0) {
-        sprintf(request, "%s HTTP/1.1\r\nHost: %s:%s\r\nContent-Type: text/plain\r\n\r\n",
-                method, host, port);
+        stringStream << method << " HTTP/1.1\r\nHost: " << host << ":" << port << "\r\n\r\n";
+        request = stringStream.str();
     }
     if (strncmp(method, "DELETE", 6) == 0) {
-        sprintf(request, "%s HTTP/1.1\r\nHost: %s:%s\r\nContent-Type: text/plain\r\n\r\n",
-                method, host, port);
+        stringStream << method << " HTTP/1.1\r\nHost: " << host << ":" << port << "\r\n\r\n";
+        request = stringStream.str();
     }
     if (strncmp(method, "PUT", 3) == 0) {
-        sprintf(request, "%s HTTP/1.1\r\nHost: %s:%s\r\nContent-Type: text/plain\r\nContent-Length: %zu\r\n\r\n%s\n",
-                method, host, port, strlen(data), data);
+        stringStream << method << " HTTP/1.1\r\nHost: " << host << ":" << port
+                     << "\r\nContent-Type: text/plain\r\nContent-Length: " << strlen(data) << "\r\n\r\n" << strData
+                     << "\n";
+        request = stringStream.str();
+        if (request.size() >= window) {
+            printf("Content is too long, please make it shorter.\n");
+            exit(EXIT_FAILURE);
+        }
     }
 
-    write(sockfd, request, sizeof(request));
+    char requestChar[request.size() + 1];
+    strcpy(requestChar, request.c_str());
+    sendbytes = write(sockfd, requestChar, sizeof(requestChar));
+    if (sendbytes == -1) {
+        err(1, "write() failed.");
+    }
     bzero(fromServer, sizeof(fromServer));
-    read(sockfd, fromServer, sizeof(fromServer));
+    read(sockfd, fromServer, window);
     std::string stringFromServer(fromServer);
 
     int code = 0;
@@ -33,8 +53,7 @@ int http_method(int sockfd, char *method, const char *port, const char *host, ch
         std::string headersStringFromServer = getHeaders(stringFromServer);
         code = checkHttpReturnCode(headersStringFromServer);
         std::cout << stringFromServer;
-    }
-    else {
+    } else {
         std::string contentStringFromServer = getContent(stringFromServer);
         std::string headersStringFromServer = getHeaders(stringFromServer);
         code = checkHttpReturnCode(headersStringFromServer);
@@ -55,7 +74,7 @@ int checkHttpReturnCode(std::string headers) {
     try {
         intCode = std::stoi(strCode);
     }
-    catch (std::invalid_argument const &e){
+    catch (std::invalid_argument const &e) {
         return intCode;
     }
     catch (std::out_of_range const &e) {
@@ -254,7 +273,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (port == nullptr) {
-        fprintf( stderr, "Port number is the required argument!\n");
+        fprintf(stderr, "Port number is the required argument!\n");
         return EXIT_FAILURE;
     }
 
@@ -267,8 +286,7 @@ int main(int argc, char *argv[]) {
     int tmpArgumentsCounter;
     if (verbose) {
         tmpArgumentsCounter = argc - 6;
-    }
-    else {
+    } else {
         tmpArgumentsCounter = argc - 5;
     }
     for (int i = tmpArgumentsCounter; i > 0; --i) {
@@ -285,7 +303,6 @@ int main(int argc, char *argv[]) {
             strcat(contentForPost, argv[argc - i]);
         }
     }
-
     std::string strCommand(command);
     bool everythingOk = checkCommandLineArguments(strCommand);
     if (!everythingOk) {
@@ -293,13 +310,32 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    struct addrinfo hints{}, *infoptr;
+    hints.ai_family = AF_INET;
+
+    int result = getaddrinfo(host, NULL, &hints, &infoptr);
+    if (result) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(result));
+        exit(1);
+    }
+
+    struct addrinfo *p;
+    char hostname[256];
+
+    for (p = infoptr; p != nullptr; p = p->ai_next) {
+        getnameinfo(p->ai_addr, p->ai_addrlen, hostname, sizeof(hostname), nullptr, 0, NI_NUMERICHOST);
+        break;
+    }
+
+    freeaddrinfo(infoptr);
+
     char *fullHttpCommand = (char *) malloc(len * 2);
     fullHttpCommand = convertCommandtoHttpRequest(command, fullHttpCommand);
-    int code = connect(port, host, fullHttpCommand, contentForPost, verbose);
+    int code = connect(port, hostname, fullHttpCommand, contentForPost, verbose);
     free(command);
     free(fullHttpCommand);
 
-    if (code == -1) { exit(-1); }
+    if (code == -1) { exit(EXIT_FAILURE); }
     exit(0);
 }
 
@@ -309,36 +345,29 @@ int help() {
     exit(EXIT_SUCCESS);
 }
 
-bool checkCommandLineArguments(const std::string& command) {
+bool checkCommandLineArguments(const std::string &command) {
     if (command.find("item") != std::string::npos && command.find("update") != std::string::npos) {
         std::regex update(R"((item update [a-zA-Z0-9]+ [0-9]+ [\x00-\x7F]+))");
         if (!isMatch(command, update)) { return false; }
-    }
-    else if (command.find("item") != std::string::npos && command.find("add") != std::string::npos) {
+    } else if (command.find("item") != std::string::npos && command.find("add") != std::string::npos) {
         std::regex update(R"((item add [a-zA-Z0-9]+ [\x00-\x7F]+))");
         if (!isMatch(command, update)) { return false; }
-    }
-    else if (command.find("item") != std::string::npos && command.find("delete") != std::string::npos) {
+    } else if (command.find("item") != std::string::npos && command.find("delete") != std::string::npos) {
         std::regex update(R"((item delete [a-zA-Z0-9]+ [0-9]+))");
         if (!isMatch(command, update)) { return false; }
-    }
-    else if (command.find("board") != std::string::npos && command.find("list") != std::string::npos) {
+    } else if (command.find("board") != std::string::npos && command.find("list") != std::string::npos) {
         std::regex update(R"((board list [a-zA-Z0-9]+))");
         if (!isMatch(command, update)) { return false; }
-    }
-    else if (command.find("board") != std::string::npos && command.find("delete") != std::string::npos) {
+    } else if (command.find("board") != std::string::npos && command.find("delete") != std::string::npos) {
         std::regex update(R"((board delete [a-zA-Z0-9]+))");
         if (!isMatch(command, update)) { return false; }
-    }
-    else if (command.find("boards") != std::string::npos) {
+    } else if (command.find("boards") != std::string::npos) {
         std::regex update(R"((boards))");
         if (!isMatch(command, update)) { return false; }
-    }
-    else if (command.find("board") != std::string::npos && command.find("add") != std::string::npos) {
+    } else if (command.find("board") != std::string::npos && command.find("add") != std::string::npos) {
         std::regex update(R"((board add [a-zA-Z0-9]+))");
         if (!isMatch(command, update)) { return false; }
-    }
-    else {
+    } else {
         return false;
     }
     return true;
@@ -351,7 +380,7 @@ int connect(char *port, char *host, char *command, char *contentForPost, bool ve
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1) {
         printf("socket creation failed...\n");
-        exit(0);
+        exit(EXIT_FAILURE);
     }
     bzero(&servaddr, sizeof(servaddr));
 
@@ -361,10 +390,10 @@ int connect(char *port, char *host, char *command, char *contentForPost, bool ve
 
     if (connect(sockfd, (SA *) &servaddr, sizeof(servaddr)) != 0) {
         printf("connection with the server failed...\n");
-        exit(0);
+        exit(EXIT_FAILURE);
     }
 
-    int code = http_method(sockfd, command, port, host, contentForPost, verbose);
+    int code = httpMethod(sockfd, command, port, host, contentForPost, verbose);
 
     close(sockfd);
 
