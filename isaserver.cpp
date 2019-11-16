@@ -1,5 +1,7 @@
 #include "isaserver.h"
 
+std::string getDate();
+
 int main(int argc, char *argv[]) {
     int opt;
     char *port = nullptr;
@@ -91,6 +93,9 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
             if (typeOfPost == CONFLICT) {
                 code = 409;
             }
+            if (typeOfPost == NOTFOUND) {
+                code = NOTFOUND;
+            }
             if (typeOfPost == NEWBOARD) {
                 code = POST_OK;
             }
@@ -136,29 +141,50 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
     return code;
 }
 
+
 std::string prepareRespond(int code) {
-    time_t now = time(0);
-    char *dt = ctime(&now);
-    if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
+    std::string date = getDate();
     std::ostringstream stringStream;
 
     if (code == CONFLICT) {
-        stringStream << "HTTP/1.1 " << code << " Conflict\r\nDate: " << dt << "\r\n\r\n";
+        stringStream << "HTTP/1.1 " << code << " Conflict\r\nDate: " << date << "\r\n\r\n";
     }
     if (code == NOTFOUND) {
-        stringStream << "HTTP/1.1 " << code << " Not Found\r\nDate: " << dt << "\r\n\r\n";
+        stringStream << "HTTP/1.1 " << code << " Not Found\r\nDate: " << date << "\r\n\r\n";
     }
     if (code == POST_OK) {
-        stringStream << "HTTP/1.1 " << code << " Created\r\nDate: " << dt << "\r\n\r\n";
+        stringStream << "HTTP/1.1 " << code << " Created\r\nDate: " << date << "\r\n\r\n";
     }
     if (code == OK) {
-        stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << dt << "\r\n\r\n";
+        stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << date << "\r\n\r\n";
     }
     if (code == BADREQUEST) {
-        stringStream << "HTTP/1.1 " << code << " Bad Request\r\nDate: " << dt << "\r\n\r\n";
+        stringStream << "HTTP/1.1 " << code << " Bad Request\r\nDate: " << date << "\r\n\r\n";
     }
     std::string request = stringStream.str();
     return request;
+}
+
+std::string getDate() {
+    char date[200];
+    time_t t;
+    struct tm *tmp;
+    char str[80];
+    const char *fmt = "%a, %d %b %Y %T GMT";
+
+    t = time(nullptr);
+    tmp = gmtime(&t);
+    if (tmp == nullptr) {
+        perror("gmtime error");
+        exit(EXIT_FAILURE);
+    }
+
+    if (strftime(date, sizeof(date), fmt, tmp) == 0) {
+        fprintf(stderr, "strftime returned 0");
+        exit(EXIT_FAILURE);
+    }
+    std::string strDate(date);
+    return strDate;
 }
 
 int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
@@ -192,7 +218,8 @@ int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
     std::string name = putCommandParts.at(position + 2);
     std::regex put(R"(PUT[ \t]+\/board\/)" + name + R"(\/)" + putCommandParts.at(position + 3) +
                    R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
-    if (!isMatch(command, put)) {
+    std::regex content_type(R"(Content-Type:[ \t]*text\/plain\r\n)");
+    if (!isMatch(command, put) || !isMatch(command, content_type)) {
         return NOTFOUND;
     }
 
@@ -222,9 +249,7 @@ long getPosition(std::vector<std::string> &putCommandParts, const std::string &m
 int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
     int sendbytes;
     int code = NOTFOUND;
-    time_t now = time(0);
-    char *dt = ctime(&now);
-    if (dt[strlen(dt) - 1] == '\n') { dt[strlen(dt) - 1] = '\0'; }
+    std::string date = getDate();
     std::string commands(buff);
     std::string commandContent = getContent(commands);
     std::vector<std::string> getCommandParts = getCommandPartsAsVector(commands);
@@ -254,7 +279,7 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
         findAndReplaceAll(content, "\n\n", "\n");
 
         std::ostringstream stringStream;
-        stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << dt
+        stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << date
                      << "\r\nContent-Type: text/plain\r\nContent-Length: " << content.size() - 1 << "\r\n\r\n"
                      << content
                      << "\n";
@@ -266,6 +291,13 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
         } else {
             char request[MAXSIZEOFREQUEST];
             std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 20) + "\n";
+            std::string contentFromTruncated = getContent(truncated);
+            std::ostringstream stringStream2;
+            stringStream2 << "HTTP/1.1 " << code << " OK\r\nDate: " << date
+                          << "\r\nContent-Type: text/plain\r\nContent-Length: " << contentFromTruncated.size() - 1
+                          << "\r\n\r\n"
+                          << contentFromTruncated
+                          << "\n";
             strcpy(request, truncated.c_str());
             sendbytes = write(connfd, request, sizeof(request));
         }
@@ -290,7 +322,7 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
 
             code = OK;
             std::ostringstream stringStream;
-            stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << dt
+            stringStream << "HTTP/1.1 " << code << " OK\r\nDate: " << date
                          << "\r\nContent-Type: text/plain\r\nContent-Length: "
                          << contentOfPost.size() + i.boardStructName.size() + 2 << "\r\n\r\n" << "["
                          << i.boardStructName << "]" << "\n"
@@ -303,6 +335,12 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
             } else {
                 char request[MAXSIZEOFREQUEST];
                 std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 20) + "\n";
+                std::string contentFromTruncated = getContent(truncated);
+                std::ostringstream stringStream2;
+                stringStream2 << "HTTP/1.1 " << code << " OK\r\nDate: " << date
+                              << "\r\nContent-Type: text/plain\r\nContent-Length: "
+                              << contentFromTruncated.size() << "\r\n\r\n"
+                              << contentFromTruncated << "\n";
                 strcpy(request, truncated.c_str());
                 sendbytes = write(connfd, request, sizeof(request));
             }
@@ -398,8 +436,9 @@ int upgradeBoardContent(char *buff, std::list<Board> &allBoards) {
     if (position == 0) { return NOTFOUND; }
 
     std::string name = postCommandParts.at(position + 2);
-    std::regex delete1(R"(POST[ \t]+\/board\/)" + name + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
-    if (!isMatch(command, delete1)) {
+    std::regex delete1(R"(POST[ \t]+/board/)" + name + R"([ \t]+HTTP/1.1[ \t]*\r\n)");
+    std::regex content_type(R"(Content-Type:[ \t]*text/plain\r\n)");
+    if (!isMatch(command, delete1) || !isMatch(command, content_type)) {
         return NOTFOUND;
     }
 
@@ -448,7 +487,8 @@ int post(char *buff, Board &newBoard, std::list<Board> &allBoards) {
         for (auto &i: allBoards) { if (postCommandParts.at(position + 2) == i.boardStructName) { return 409; }}
         std::string name = postCommandParts.at(position + 2);
         std::regex delete1(R"(POST[ \t]+\/boards\/)" + name + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
-        if (!isMatch(command, delete1)) {
+        std::regex content_type(R"(Content-Type:[ \t]*text/plain\r\n)");
+        if (!isMatch(command, delete1) || !isMatch(command, content_type)) {
             return NOTFOUND;
         }
         newBoard.boardStructName = postCommandParts.at(position + 2);
