@@ -1,9 +1,8 @@
-#include <err.h>
 #include "isaclient.h"
 
 
 int communicateWithServer(int sockfd, char *method, const char *port, const char *host, char *data) {
-    char fromServer[window];
+    char fromServer[MAXSIZEOFREQUEST];
     std::ostringstream stringStream;
     std::string strData(data);
     std::string request;
@@ -11,11 +10,11 @@ int communicateWithServer(int sockfd, char *method, const char *port, const char
 
     if (strncmp(method, "POST", 4) == 0) {
         stringStream << method << " HTTP/1.1\r\nHost: " << host << ":" << port
-                     << "\r\nContent-Type: text/plain\r\nContent-Length: " << strlen(data) << "\r\n\r\n" << strData
+                     << "\r\nContent-Type: text/plain\r\nContent-Length: " << strData.size()-1 << "\r\n\r\n" << strData
                      << "\n";
         request = stringStream.str();
-        if (request.size() >= window) {
-            printf("Content is too long, please make it shorter.\n");
+        if (request.size() >= MAXSIZEOFREQUEST) {
+            printf("Request is too long, please make it shorter.\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -29,11 +28,11 @@ int communicateWithServer(int sockfd, char *method, const char *port, const char
     }
     if (strncmp(method, "PUT", 3) == 0) {
         stringStream << method << " HTTP/1.1\r\nHost: " << host << ":" << port
-                     << "\r\nContent-Type: text/plain\r\nContent-Length: " << strlen(data) << "\r\n\r\n" << strData
+                     << "\r\nContent-Type: text/plain\r\nContent-Length: " << strData.size()-1 << "\r\n\r\n" << strData
                      << "\n";
         request = stringStream.str();
-        if (request.size() >= window) {
-            printf("Content is too long, please make it shorter.\n");
+        if (request.size() >= MAXSIZEOFREQUEST) {
+            printf("Request is too long, please make it shorter.\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -44,9 +43,15 @@ int communicateWithServer(int sockfd, char *method, const char *port, const char
     if (sendbytes == -1) {
         err(1, "write() failed.");
     }
+    int msg_size;
+    std::string stringFromServer;
     bzero(fromServer, sizeof(fromServer));
-    read(sockfd, fromServer, window);
-    std::string stringFromServer(fromServer);
+
+    while ((msg_size = read(sockfd, fromServer, MAXSIZEOFREQUEST)) > 0) {
+        std::string tmp2(fromServer);
+        stringFromServer += tmp2;
+        bzero(fromServer, sizeof(fromServer));
+    }
 
     int code = 0;
     std::string contentStringFromServer = getContent(stringFromServer);
@@ -289,7 +294,7 @@ int main(int argc, char *argv[]) {
         }
     }
     std::string strCommand(command);
-    bool everythingOk = checkCommandLineArguments(strCommand);
+    bool everythingOk = checkCommandLineArguments(strCommand, argc);
     if (!everythingOk) {
         fprintf(stderr, "Bad program arguments, use -h\n");
         exit(EXIT_FAILURE);
@@ -330,27 +335,34 @@ int help() {
     exit(EXIT_SUCCESS);
 }
 
-bool checkCommandLineArguments(const std::string &command) {
+bool checkCommandLineArguments(const std::string &command, int argc) {
     if (command.find("item") != std::string::npos && command.find("update") != std::string::npos) {
         std::regex update(R"((item update [a-zA-Z0-9]+ [0-9]+ [\x00-\x7F]+))");
+        if (argc != 10) { return false; }
         if (!isMatch(command, update)) { return false; }
     } else if (command.find("item") != std::string::npos && command.find("add") != std::string::npos) {
         std::regex update(R"((item add [a-zA-Z0-9]+ [\x00-\x7F]+))");
+        if (argc != 9) { return false; }
         if (!isMatch(command, update)) { return false; }
     } else if (command.find("item") != std::string::npos && command.find("delete") != std::string::npos) {
         std::regex update(R"((item delete [a-zA-Z0-9]+ [0-9]+))");
+        if (argc != 9) { return false; }
         if (!isMatch(command, update)) { return false; }
     } else if (command.find("board") != std::string::npos && command.find("list") != std::string::npos) {
         std::regex update(R"((board list [a-zA-Z0-9]+))");
+        if (argc != 8) { return false; }
         if (!isMatch(command, update)) { return false; }
     } else if (command.find("board") != std::string::npos && command.find("delete") != std::string::npos) {
         std::regex update(R"((board delete [a-zA-Z0-9]+))");
+        if (argc != 8) { return false; }
         if (!isMatch(command, update)) { return false; }
     } else if (command.find("boards") != std::string::npos) {
         std::regex update(R"((boards))");
+        if (argc != 6) { return false; }
         if (!isMatch(command, update)) { return false; }
     } else if (command.find("board") != std::string::npos && command.find("add") != std::string::npos) {
         std::regex update(R"((board add [a-zA-Z0-9]+))");
+        if (argc != 8) { return false; }
         if (!isMatch(command, update)) { return false; }
     } else {
         return false;

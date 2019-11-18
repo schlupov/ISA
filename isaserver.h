@@ -16,7 +16,7 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <regex>
-#define MAXSIZEOFREQUEST 16384
+#define MAXSIZEOFREQUEST 4096
 #define SA struct sockaddr
 #define NEWBOARD 0
 #define UPGRADEBOARD 1
@@ -125,7 +125,6 @@ std::vector<std::string> getCommandPartsAsVector(std::string &command);
  * nástěnek nebo jen obsahu jedné určité nástěnky. V obou případech dojde pomocí regulárního
  * výrazu  ke kontrole syntaxe požadavku. Před vytvořením a odesláním odpovědi klientovi se ještě najdou
  * všechny nežádoucí znaky jako \\n a zamění se za \n, aby pak klient skutečně tisknul nový řádek.
- * V případě kdy by byla opdověď odeslaná klientovi příliš dlouhá, je odpověď zkrácena na velikost 8KB.
  * @param allBoards Seznam všech nástěnek.
  * @param connfd Soket přes který se odešle odpověď klientovi.
  * @param buff Požadavek od klienta.
@@ -192,11 +191,4 @@ long getPosition(std::vector<std::string> &putCommandParts, const std::string &m
  * @return Vrací řetězec obsahující odpověď pro klienta.
  */
 std::string prepareRespond(int code);
-
-/**
- * Funkce kontroluje hlavičku Content-Length a porovnává ji s tím co bylo skutečně obdrženo v těle požadavku.
- * @param buffer Požadavek od klienta.
- * @return V případě, kdy délka řetězce v těle pořadavku neodpovídá Content-Length, je vráceno false, jinak true.
- */
-bool isContentLengthOk(const std::string& buffer);
 #endif //ISASERVER_ISASERVER_H

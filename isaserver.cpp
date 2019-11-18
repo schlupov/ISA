@@ -48,24 +48,6 @@ bool isMatch(std::string str, std::regex reg) {
     return ok > 0;
 }
 
-bool isContentLengthOk(const std::string &buffer) {
-    std::regex regex("Content-Length:[ \t]*[0-9]+\r\n");
-    std::regex number("[0-9]+");
-    std::smatch m2;
-    std::smatch m;
-    std::string content_length;
-
-    regex_search(buffer, m, regex);
-    for (auto x : m) {
-        std::string found = x;
-        regex_search(found, m2, number);
-        for (auto y : m2) { content_length = y; }
-        break;
-    }
-
-    std::string content = getContent(buffer);
-    return content.size() == std::stoi(content_length) + 1;
-}
 
 int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
     char buff[MAXSIZEOFREQUEST];
@@ -74,6 +56,7 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
     int code = 100;
 
     while ((msg_size = read(connfd, buff, MAXSIZEOFREQUEST)) > 0) {
+        printf("%s", buff);
         std::string buffer(buff);
         if (strncmp("GET", buff, 3) == 0) {
             code = getInfo(allBoards, connfd, buff);
@@ -102,9 +85,6 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
             if (typeOfPost == UPGRADEBOARD) {
                 code = upgradeBoardContent(buff, allBoards);
             }
-            if (!isContentLengthOk(buffer)) {
-                code = BADREQUEST;
-            }
             std::string preparedRequest = prepareRespond(code);
             char request[preparedRequest.size() + 1];
             strcpy(request, preparedRequest.c_str());
@@ -112,30 +92,40 @@ int resolveCommand(int connfd, std::list<Board> &allBoards, Board &newBoard) {
             if (typeOfPost == UPGRADEBOARD) {
                 code = UPGRADEBOARD;
             }
+            if (sendbytes == -1) {
+                err(1, "write() failed.");
+            }
+            return code;
         } else if (strncmp("DELETE", buff, 6) == 0) {
             code = deleteBoard(buff, allBoards);
             std::string preparedRequest = prepareRespond(code);
             char request[preparedRequest.size() + 1];
             strcpy(request, preparedRequest.c_str());
             sendbytes = write(connfd, request, sizeof(request));
+            if (sendbytes == -1) {
+                err(1, "write() failed.");
+            }
+            return code;
         } else if (strncmp("PUT", buff, 3) == 0) {
             code = updateSpecificPost(buff, allBoards);
-            if (!isContentLengthOk(buffer)) {
-                code = BADREQUEST;
-            }
             std::string preparedRequest = prepareRespond(code);
             char request[preparedRequest.size() + 1];
             strcpy(request, preparedRequest.c_str());
             sendbytes = write(connfd, request, sizeof(request));
+            if (sendbytes == -1) {
+                err(1, "write() failed.");
+            }
+            return code;
         } else {
             code = NOTFOUND;
             std::string preparedRequest = prepareRespond(code);
             char request[preparedRequest.size() + 1];
             strcpy(request, preparedRequest.c_str());
             sendbytes = write(connfd, request, sizeof(request));
-        }
-        if (sendbytes == -1) {
-            err(1, "write() failed.");
+            if (sendbytes == -1) {
+                err(1, "write() failed.");
+            }
+            return code;
         }
     }
     return code;
@@ -223,7 +213,17 @@ int updateSpecificPost(char *buff, std::list<Board> &allBoards) {
         return NOTFOUND;
     }
 
-    int id = std::stoi(putCommandParts.at(position + 3));
+    int id;
+    try {
+        id = std::stoi(putCommandParts.at(position + 3));
+    }
+    catch (std::invalid_argument const &e) {
+        return NOTFOUND;
+    }
+    catch (std::out_of_range const &e) {
+        return NOTFOUND;
+    }
+
     for (auto &i: allBoards) {
         if (putCommandParts.at(position + 2) == i.boardStructName) {
             if (id <= i.posts.size() && id >= 0) {
@@ -288,24 +288,9 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
                      << content
                      << "\n";
         std::string copyOfStr = stringStream.str();
-        if (copyOfStr.size() < MAXSIZEOFREQUEST - 10) {
-            char request[copyOfStr.size() + 1];
-            strcpy(request, copyOfStr.c_str());
-            sendbytes = write(connfd, request, sizeof(request));
-        } else {
-            char request[MAXSIZEOFREQUEST];
-            std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 10) + "\n";
-            std::string contentFromTruncated = getContent(truncated);
-            std::ostringstream stringStream2;
-            stringStream2 << "HTTP/1.1 " << code << " OK\r\nDate: " << date
-                          << "\r\nContent-Type: text/plain\r\nContent-Length: " << contentFromTruncated.size() - 1
-                          << "\r\n\r\n"
-                          << contentFromTruncated
-                          << "\n";
-            std::string copyOfStr2 = stringStream2.str();
-            strcpy(request, copyOfStr2.c_str());
-            sendbytes = write(connfd, request, sizeof(request));
-        }
+        char request[copyOfStr.size() + 1];
+        strcpy(request, copyOfStr.c_str());
+        sendbytes = write(connfd, request, sizeof(request));
         if (sendbytes == -1) {
             err(1, "write() failed.");
         }
@@ -333,23 +318,9 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
                          << i.boardStructName << "]" << "\n"
                          << contentOfPost << "\n";
             std::string copyOfStr = stringStream.str();
-            if (copyOfStr.size() < MAXSIZEOFREQUEST - 10) {
-                char request[copyOfStr.size() + 1];
-                strcpy(request, copyOfStr.c_str());
-                sendbytes = write(connfd, request, sizeof(request));
-            } else {
-                char request[MAXSIZEOFREQUEST];
-                std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 10) + "\n";
-                std::string contentFromTruncated = getContent(truncated);
-                std::ostringstream stringStream2;
-                stringStream2 << "HTTP/1.1 " << code << " OK\r\nDate: " << date
-                              << "\r\nContent-Type: text/plain\r\nContent-Length: "
-                              << contentFromTruncated.size() << "\r\n\r\n"
-                              << contentFromTruncated << "\n";
-                std::string copyOfStr2 = stringStream2.str();
-                strcpy(request, copyOfStr2.c_str());
-                sendbytes = write(connfd, request, sizeof(request));
-            }
+            char request[copyOfStr.size() + 1];
+            strcpy(request, copyOfStr.c_str());
+            sendbytes = write(connfd, request, sizeof(request));
             if (sendbytes == -1) {
                 err(1, "write() failed.");
             }
@@ -410,7 +381,17 @@ int deleteBoard(char *buff, std::list<Board> &allBoards) {
         return NOTFOUND;
     }
 
-    int id = std::stoi(deleteCommandParts.at(position + 3));
+    int id;
+    try {
+        id = std::stoi(deleteCommandParts.at(position + 3));
+    }
+    catch (std::invalid_argument const &e) {
+        return NOTFOUND;
+    }
+    catch (std::out_of_range const &e) {
+        return NOTFOUND;
+    }
+
     std::string name = deleteCommandParts.at(position + 2);
     std::regex delete2(R"(DELETE[ \t]+\/board\/)" + name + R"(\/)" + deleteCommandParts.at(position + 3) +
                        R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
@@ -443,8 +424,7 @@ int upgradeBoardContent(char *buff, std::list<Board> &allBoards) {
 
     std::string name = postCommandParts.at(position + 2);
     std::regex delete1(R"(POST[ \t]+/board/)" + name + R"([ \t]+HTTP/1.1[ \t]*\r\n)");
-    std::regex content_type(R"(Content-Type:[ \t]*text/plain\r\n)");
-    if (!isMatch(command, delete1) || !isMatch(command, content_type)) {
+    if (!isMatch(command, delete1)) {
         return NOTFOUND;
     }
 
@@ -493,8 +473,7 @@ int post(char *buff, Board &newBoard, std::list<Board> &allBoards) {
         for (auto &i: allBoards) { if (postCommandParts.at(position + 2) == i.boardStructName) { return 409; }}
         std::string name = postCommandParts.at(position + 2);
         std::regex delete1(R"(POST[ \t]+\/boards\/)" + name + R"([ \t]+HTTP\/1\.1[ \t]*\r\n)");
-        std::regex content_type(R"(Content-Type:[ \t]*text/plain\r\n)");
-        if (!isMatch(command, delete1) || !isMatch(command, content_type)) {
+        if (!isMatch(command, delete1)) {
             return NOTFOUND;
         }
         newBoard.boardStructName = postCommandParts.at(position + 2);

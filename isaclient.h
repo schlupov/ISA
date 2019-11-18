@@ -15,8 +15,9 @@
 #include <regex>
 #include <sstream>
 #include <sys/types.h>
+#include <err.h>
 #define SA struct sockaddr
-#define window 16384
+#define MAXSIZEOFREQUEST 4096
 
 /**
  * Enum pro konečný automat, který převádí
@@ -100,10 +101,11 @@ bool isMatch(std::string str, std::regex reg);
  * Funkce kontroluje, že byly zadány správné vstupní argumenty programu pomocí regulárních
  * výrazů. Regulární výrazy zároveň kontrolují, že se uživatel snaží vytvořit nástěnku se jménem
  * složeným ze znaků a-z nebo z čísel. Zároveň <content> může obsahovat pouze ascii znaky.
+ * Funkce také kontroluje, že byl zadán správný počet argumentů programu.
  * @param command Vstupní argumenty programu.
  * @return Vrací true, pokud je vše v pořádku, jinak false.
  */
-bool checkCommandLineArguments(const std::string& command);
+bool checkCommandLineArguments(const std::string &command, int argc);
 
 /**
  * Funkce rozdělí odpověď od serveru a vrátí pouze hlavičky požadavku. Tato funkce počítá s tím,
