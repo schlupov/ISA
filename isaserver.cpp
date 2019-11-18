@@ -271,7 +271,11 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
                 content += i.boardStructName + "\n";
             }
         }
-        if (code != OK) { return code; }
+
+        if (code != OK) {
+            code = OK;
+            content += " ";
+        }
 
         findAndReplaceAll(content, "\\n", "\n");
         findAndReplaceAll(content, "\\n", "\n");
@@ -284,13 +288,13 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
                      << content
                      << "\n";
         std::string copyOfStr = stringStream.str();
-        if (copyOfStr.size() < MAXSIZEOFREQUEST - 20) {
+        if (copyOfStr.size() < MAXSIZEOFREQUEST - 10) {
             char request[copyOfStr.size() + 1];
             strcpy(request, copyOfStr.c_str());
             sendbytes = write(connfd, request, sizeof(request));
         } else {
             char request[MAXSIZEOFREQUEST];
-            std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 20) + "\n";
+            std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 10) + "\n";
             std::string contentFromTruncated = getContent(truncated);
             std::ostringstream stringStream2;
             stringStream2 << "HTTP/1.1 " << code << " OK\r\nDate: " << date
@@ -298,7 +302,8 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
                           << "\r\n\r\n"
                           << contentFromTruncated
                           << "\n";
-            strcpy(request, truncated.c_str());
+            std::string copyOfStr2 = stringStream2.str();
+            strcpy(request, copyOfStr2.c_str());
             sendbytes = write(connfd, request, sizeof(request));
         }
         if (sendbytes == -1) {
@@ -328,20 +333,21 @@ int getInfo(std::list<Board> &allBoards, int connfd, char *buff) {
                          << i.boardStructName << "]" << "\n"
                          << contentOfPost << "\n";
             std::string copyOfStr = stringStream.str();
-            if (copyOfStr.size() < MAXSIZEOFREQUEST - 20) {
+            if (copyOfStr.size() < MAXSIZEOFREQUEST - 10) {
                 char request[copyOfStr.size() + 1];
                 strcpy(request, copyOfStr.c_str());
                 sendbytes = write(connfd, request, sizeof(request));
             } else {
                 char request[MAXSIZEOFREQUEST];
-                std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 20) + "\n";
+                std::string truncated = copyOfStr.substr(0, MAXSIZEOFREQUEST - 10) + "\n";
                 std::string contentFromTruncated = getContent(truncated);
                 std::ostringstream stringStream2;
                 stringStream2 << "HTTP/1.1 " << code << " OK\r\nDate: " << date
                               << "\r\nContent-Type: text/plain\r\nContent-Length: "
                               << contentFromTruncated.size() << "\r\n\r\n"
                               << contentFromTruncated << "\n";
-                strcpy(request, truncated.c_str());
+                std::string copyOfStr2 = stringStream2.str();
+                strcpy(request, copyOfStr2.c_str());
                 sendbytes = write(connfd, request, sizeof(request));
             }
             if (sendbytes == -1) {
@@ -574,7 +580,7 @@ int startServer(int port) {
         connfd = accept(sockfd, (struct sockaddr *) &cli, (socklen_t *) &len);
         if (connfd < 0) {
             printf("server accept failed...\n");
-            exit(0);
+            exit(EXIT_FAILURE);
         }
 
         Board newBoard;
@@ -586,7 +592,7 @@ int startServer(int port) {
         close(connfd);
     }
 
-    close(sockfd); // close an original server socket
+    close(sockfd);
     printf("* Closing the original socket\n");
     return 0;
 }

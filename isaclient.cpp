@@ -2,7 +2,7 @@
 #include "isaclient.h"
 
 
-int httpMethod(int sockfd, char *method, const char *port, const char *host, char *data, bool verbose) {
+int communicateWithServer(int sockfd, char *method, const char *port, const char *host, char *data) {
     char fromServer[window];
     std::ostringstream stringStream;
     std::string strData(data);
@@ -49,17 +49,11 @@ int httpMethod(int sockfd, char *method, const char *port, const char *host, cha
     std::string stringFromServer(fromServer);
 
     int code = 0;
-    if (verbose) {
-        std::string headersStringFromServer = getHeaders(stringFromServer);
-        code = checkHttpReturnCode(headersStringFromServer);
-        std::cout << stringFromServer;
-    } else {
-        std::string contentStringFromServer = getContent(stringFromServer);
-        std::string headersStringFromServer = getHeaders(stringFromServer);
-        code = checkHttpReturnCode(headersStringFromServer);
-        std::cerr << headersStringFromServer;
-        std::cout << contentStringFromServer;
-    }
+    std::string contentStringFromServer = getContent(stringFromServer);
+    std::string headersStringFromServer = getHeaders(stringFromServer);
+    code = checkHttpReturnCode(headersStringFromServer);
+    fprintf(stderr, "%s", headersStringFromServer.c_str());
+    printf("%s", contentStringFromServer.c_str());
 
     if (code > 201) {
         return -1;
@@ -250,18 +244,14 @@ int main(int argc, char *argv[]) {
     int opt;
     char *port = nullptr;
     char *host = nullptr;
-    bool verbose = false;
 
-    while ((opt = getopt(argc, argv, ":p:H:v:h")) != -1) {
+    while ((opt = getopt(argc, argv, ":p:H:h")) != -1) {
         switch (opt) {
             case 'p':
                 port = optarg;
                 break;
             case 'H':
                 host = optarg;
-                break;
-            case 'v':
-                verbose = true;
                 break;
             case 'h':
                 help();
@@ -283,12 +273,7 @@ int main(int argc, char *argv[]) {
     }
 
     unsigned long len = 0;
-    int tmpArgumentsCounter;
-    if (verbose) {
-        tmpArgumentsCounter = argc - 6;
-    } else {
-        tmpArgumentsCounter = argc - 5;
-    }
+    int tmpArgumentsCounter = argc - 5;
     for (int i = tmpArgumentsCounter; i > 0; --i) {
         len = len + strlen(argv[argc - i]);
     }
@@ -331,7 +316,7 @@ int main(int argc, char *argv[]) {
 
     char *fullHttpCommand = (char *) malloc(len * 2);
     fullHttpCommand = convertCommandtoHttpRequest(command, fullHttpCommand);
-    int code = connect(port, hostname, fullHttpCommand, contentForPost, verbose);
+    int code = connect(port, hostname, fullHttpCommand, contentForPost);
     free(command);
     free(fullHttpCommand);
 
@@ -373,7 +358,7 @@ bool checkCommandLineArguments(const std::string &command) {
     return true;
 }
 
-int connect(char *port, char *host, char *command, char *contentForPost, bool verbose) {
+int connect(char *port, char *host, char *command, char *contentForPost) {
     int sockfd;
     struct sockaddr_in servaddr{};
 
@@ -393,7 +378,7 @@ int connect(char *port, char *host, char *command, char *contentForPost, bool ve
         exit(EXIT_FAILURE);
     }
 
-    int code = httpMethod(sockfd, command, port, host, contentForPost, verbose);
+    int code = communicateWithServer(sockfd, command, port, host, contentForPost);
 
     close(sockfd);
 
